@@ -1,0 +1,4 @@
+# 单篇测试:1 个 URL,跑通基本流程
+# 用法:  .\wx2md.exe -i examples\test_single.txt -o output\test_single
+# 预期:  output\test_single\ 下出现 1 个文章文件夹,日志 1 ok / 0 failed
+https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw

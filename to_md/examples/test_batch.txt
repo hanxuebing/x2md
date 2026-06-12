@@ -1,0 +1,5 @@
+# 批量测试:多个 URL,验证文章级并发
+# 用法:  .\wx2md.exe -i examples\test_batch.txt -o output\test_batch -w 2 -t 8
+# 预期:  并行抓取,output\test_batch\ 下出现多个文章文件夹
+https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw
+https://mp.weixin.qq.com/s/NcQmDNnuMaH96qMBuENoNg
