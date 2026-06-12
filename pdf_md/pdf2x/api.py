@@ -170,8 +170,8 @@ def convert_batch(
         )
         convert(
             pdf,
-            html=folder / f"{pdf.stem}.html",
-            md=folder / f"{pdf.stem}.md",
+            html=folder / "article.html",
+            md=folder / "article.md",
             mode=mode,
             assets_dir=folder / "assets",
             ocr=ocr,
