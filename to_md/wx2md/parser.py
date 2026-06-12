@@ -205,8 +205,8 @@ def rewrite_content(content: Tag, mapping: dict[str, str]) -> None:
         src = img.get("data-src") or img.get("src") or ""
         src = src.strip()
         if src in mapping:
-            # 命中本地映射:替换为相对路径,article.html 旁边的 images/
-            img["src"] = f"images/{mapping[src]}"
+            # 命中本地映射:替换为相对路径,article.html 旁边的 assets/
+            img["src"] = f"assets/{mapping[src]}"
         elif src:
             # 没下载下来的图片,保留远程地址作为兜底(可能能在线显示)
             img["src"] = src

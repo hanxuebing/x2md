@@ -1,10 +1,10 @@
-"""核心编排层:抓取一篇文章 -> 解析 -> 下载图片 -> 输出 MD + HTML + images/。
+"""核心编排层:抓取一篇文章 -> 解析 -> 下载图片 -> 输出 MD + HTML + assets/。
 
 每篇文章独立产出一个目录:
     <output>/<安全标题>/
         ├── article.md       (含 YAML frontmatter)
         ├── article.html     (保留原文样式,可离线阅读)
-        └── images/          (按内容 sha1 命名的图片)
+        └── assets/          (按内容 sha1 命名的图片)
 """
 from __future__ import annotations
 
@@ -145,9 +145,9 @@ def process_article(
         # 未登录 / 链接失效 / 文章已删除时常见
         raise RuntimeError("content div #js_content not found — login wall or invalid URL?")
 
-    # 3) 准备输出目录:<output>/<安全标题>/images/
+    # 3) 准备输出目录:<output>/<安全标题>/assets/
     folder = out_root / safe_filename(meta.title)
-    img_dir = folder / "images"
+    img_dir = folder / "assets"
     img_dir.mkdir(parents=True, exist_ok=True)
 
     # 4) 收集正文里所有真实图片 URL
