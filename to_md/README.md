@@ -5,7 +5,7 @@
 - 文章级 + 图片级 **双层多线程**，下载快
 - 自动处理懒加载 `data-src`、`Referer` 防盗链
 - HTML 输出 **尽量忠于公众号原样式**（保留 inline `style`、`<section>` 排版结构）
-- 输出三件套：`article.md`、`article.html`、`images/`
+- 输出三件套：`article.md`、`article.html`、`assets/`
 - 三种使用形态：**Python 包 / 全局 CLI 命令 / 单文件 .exe**
 - 内置 `--debug` 模式：完整 traceback + 失败诊断 dump
 - 用 [uv](https://docs.astral.sh/uv/) 管理依赖与虚拟环境
@@ -233,9 +233,9 @@ uv run wx2md --debug https://mp.weixin.qq.com/s/INVALID_URL -o test
 ```
 output/
 ├── 文章标题A/
-│   ├── article.md      ← Markdown，相对路径引用 images/
+│   ├── article.md      ← Markdown，相对路径引用 assets/
 │   ├── article.html    ← 极简骨架 + 公众号原样式，浏览器直接打开
-│   └── images/
+│   └── assets/
 │       ├── 7f3a1c9b2e4d5601.jpg
 │       ├── a1b2c3d4e5f60718.png
 │       └── ...

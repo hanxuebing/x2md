@@ -42,7 +42,7 @@ The package is a small pipeline; understanding it requires reading across module
 **Entry → concurrency → per-article pipeline → output**
 
 - `cli.py` — argparse + the **outer** `ThreadPoolExecutor(workers)` that fans out *articles*. Constructs a single shared `httpx.Client` (with `Limits`) that is reused by every thread. Owns `--debug` reporting: catches per-article exceptions and writes `output/_debug/failed.txt` + `report.txt`.
-- `core.process_article` — orchestrates one article: fetch HTML → `parse_meta` → locate `#js_content` → spin up the **inner** `ThreadPoolExecutor(img_workers)` for images → `rewrite_content` → write `article.md` (with YAML frontmatter), `article.html`, and `images/`. Both pools share the same `httpx.Client` so connections pool naturally.
+- `core.process_article` — orchestrates one article: fetch HTML → `parse_meta` → locate `#js_content` → spin up the **inner** `ThreadPoolExecutor(img_workers)` for images → `rewrite_content` → write `article.md` (with YAML frontmatter), `article.html`, and `assets/`. Both pools share the same `httpx.Client` so connections pool naturally.
 - `net.py` — HTTP layer. Two non-obvious constraints encoded here:
   - `mmbiz.qpic.cn` rejects requests without `Referer: https://mp.weixin.qq.com/` (anti-hotlink). Every image GET must include it.
   - Image filename = `sha1(bytes)[:16] + ext`. Same content → same name → cross-article dedup *and* idempotent re-runs (skip if file exists). Extension inferred from `Content-Type` → `wx_fmt=` URL param → URL suffix → `.jpg`.
