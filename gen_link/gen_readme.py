@@ -91,14 +91,15 @@ def main():
     with open(readme, "w", encoding="utf-8") as f:
         f.write("\n".join(link_lines).rstrip() + "\n")
 
-    # README_URL.md: plain text, url on its own line then title on the next line
-    # (just title if no url), with a blank line after each entry.
+    # README_URL.md: plain text, "url title" on one line (just title if no url),
+    # with a blank line after each entry.
     url_lines = []
     for a in articles:
         url = a["fm"].get("url", "")
         if url:
-            url_lines.append(url)
-        url_lines.append(a["title"])
+            url_lines.append("%s %s" % (url, a["title"]))
+        else:
+            url_lines.append(a["title"])
         url_lines.append("")
 
     readme_url = os.path.join(output_dir, "README_URL.md")
