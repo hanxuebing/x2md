@@ -53,8 +53,7 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 git clone <this-repo> pdf2x
 cd pdf2x
 uv tool install .
-# 想要 OCR 支持：
-uv tool install ".[ocr]"
+# OCR 支持（pytesseract、Pillow）已包含在默认依赖中，无需额外安装
 ```
 
 之后 shell 里直接：
@@ -77,8 +76,7 @@ uv add /path/to/pdf2x
 ```bash
 git clone <this-repo> pdf2x
 cd pdf2x
-uv sync                  # 创建 .venv 并安装依赖
-uv sync --extra ocr      # 也安装 OCR 可选依赖
+uv sync                  # 创建 .venv 并安装依赖（已含 OCR 支持）
 uv run pdf2x --help      # 通过 uv 跑 CLI
 uv run pytest            # 跑测试
 ```
@@ -226,7 +224,7 @@ execFileSync("pdf2x", ["input.pdf", "--html", "out.html"], { stdio: "inherit" })
 A：源 PDF 的字体没能嵌入或转换 WOFF2 失败。pdf2x 只能导出 PDF 中**嵌入的** TTF/OTF 字体；非嵌入字体只能靠浏览器本地字体回退。可以试 `--mode=flow` 走结构化 HTML。
 
 **Q：执行时报 `tesseract not found`。**
-A：你要么没装系统级 tesseract，要么 `pdf2x` 没装 OCR 可选依赖。前者按本文第 1 节装，后者跑 `uv tool install ".[ocr]"`（或 `uv sync --extra ocr`）。
+A：你没有安装系统级 tesseract。按本文第 1 节的说明安装即可（pytesseract、Pillow 已包含在默认依赖中）。
 
 **Q：扫描件输出乱码或缺字。**
 A：带上 `--ocr-lang`，例如简体中文 `--ocr-lang chi_sim` 或中英混合 `--ocr-lang chi_sim+eng`，并确认 tesseract 的语言数据已下载（apt 下是 `tesseract-ocr-chi-sim` 包）。
