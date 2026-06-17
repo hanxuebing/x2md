@@ -1,6 +1,6 @@
-# 技术文档：wx2md
+# 技术文档：web2md
 
-> 本文档讲解 `wx2md` 包是如何把微信公众号文章
+> 本文档讲解 `web2md` 包是如何把微信公众号文章
 > 完整地（含图片）转成本地可离线阅读的 Markdown + HTML 的，
 > 以及背后的设计权衡。
 
@@ -68,7 +68,7 @@ curl -H "Referer: https://mp.weixin.qq.com/" https://mmbiz.qpic.cn/mmbiz_jpg/xxx
 # → 200 OK
 ```
 
-**这是程序能跑通的最关键一行**（`wx2md/net.py`）：
+**这是程序能跑通的最关键一行**（`web2md/net.py`）：
 
 ```python
 client.get(url, headers={"User-Agent": UA, "Referer": WX_REFERER}, ...)
@@ -86,7 +86,7 @@ client.get(url, headers={"User-Agent": UA, "Referer": WX_REFERER}, ...)
      src="data:image/svg+xml;utf8,<svg ...>">  <!-- 占位 SVG -->
 ```
 
-照搬 `src` 会下载一堆占位 SVG。正确做法（`wx2md/parser.py`）：
+照搬 `src` 会下载一堆占位 SVG。正确做法（`web2md/parser_wx.py`）：
 
 ```python
 src = img.get("data-src") or img.get("src") or ""
@@ -131,7 +131,7 @@ src = img.get("data-src") or img.get("src") or ""
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│              wx2md/cli.py :: main()                       │
+│              web2md/cli.py :: main()                       │
 │  1. 解析 CLI 参数（含 --debug）                            │
 │  2. 汇总 URL（位置参数 + -i 文件）                          │
 │  3. 创建共享 httpx.Client                                  │
@@ -142,12 +142,12 @@ src = img.get("data-src") or img.get("src") or ""
                           │
                           ▼ 对每个 URL
 ┌──────────────────────────────────────────────────────────┐
-│          wx2md/core.py :: process_article()               │
+│          web2md/core.py :: process_article()               │
 │                                                           │
 │  net.fetch_article() ──► BeautifulSoup ──► parse_meta()   │
 │        │                                                  │
 │        ▼                                                  │
-│  parser.collect_images()                                  │
+│  parser_wx.collect_images()                                  │
 │        │                                                  │
 │        ▼                                                  │
 │  ┌────────────────────────────────────────────────┐      │
@@ -157,11 +157,11 @@ src = img.get("data-src") or img.get("src") or ""
 │  └────────────────────────────────────────────────┘      │
 │        │                                                  │
 │        ▼                                                  │
-│  parser.rewrite_content()  (改 <img src> 为本地路径)       │
+│  parser_wx.rewrite_content()  (改 <img src> 为本地路径)       │
 │        │                                                  │
 │        ▼                                                  │
 │  ┌──────────────────────┐  ┌──────────────────────┐      │
-│  │ parser.to_markdown   │  │ templates.HTML_TEMPLATE │   │
+│  │ common.to_markdown    │  │ templates.HTML_TEMPLATE │   │
 │  └──────────────────────┘  └──────────────────────┘      │
 │        │                            │                     │
 │        ▼                            ▼                     │
@@ -174,27 +174,29 @@ src = img.get("data-src") or img.get("src") or ""
 ## 4. 包结构与模块职责
 
 ```
-wx2md/
+web2md/
 ├── __init__.py        公开 API：Article、process_article、__version__
-├── __main__.py        让 `python -m wx2md` 跑得起来
+├── __main__.py        让 `python -m web2md` 跑得起来
 ├── cli.py             argparse、--debug、文章级线程池、失败汇总
 ├── core.py            process_article 主流程、Article dataclass、safe_filename
 ├── net.py             HTTP 层：fetch_article、download_image、UA、WX_REFERER、pick_ext
-├── parser.py          DOM 层：parse_meta、collect_images、rewrite_content、to_markdown
+├── parser_wx.py       微信 DOM 层：parse_meta、collect_images、rewrite_content
+├── common.py          通用工具：to_markdown、extract_head_styles
 └── templates.py       HTML 模板（含极简骨架 CSS）
 ```
 
 | 模块 | 职责 | 不依赖谁 |
 |------|------|----------|
 | `net.py` | 只管 HTTP，不碰 DOM | 业务无关 |
-| `parser.py` | 只管 DOM 解析/改写，不碰网络 | 业务无关 |
+| `parser_wx.py` | 微信 DOM 解析/改写，不碰网络 | 业务无关 |
+| `common.py` | 通用转换工具（to_markdown、extract_head_styles） | 业务无关 |
 | `templates.py` | 只是字符串，纯数据 | 业务无关 |
 | `core.py` | 编排：net + parser + templates | 依赖以上三个 |
 | `cli.py` | argparse + 文章级并发 + 收集失败 | 依赖 core |
-| `__main__.py` | 给 `python -m wx2md` 用 | 依赖 cli |
+| `__main__.py` | 给 `python -m web2md` 用 | 依赖 cli |
 | `__init__.py` | re-export 公开 API | 依赖 core |
 
-**单向依赖**：`cli → core → {net, parser, templates}`。便于单测和复用。
+**单向依赖**：`cli → core → {net, parser_wx, common, templates}`。便于单测和复用。
 
 ---
 
@@ -237,17 +239,17 @@ Content-Type → URL 里的 wx_fmt= 参数 → URL 路径后缀 → .jpg
 
 `?wx_fmt=jpeg` 这种是公众号自家的格式标记，比路径靠谱。
 
-### 5.4 `parser.parse_meta(soup)`
+### 5.4 `parser_wx.parse_meta(soup)`
 
 CSS selector 取标题/作者，对 `meta` 标签特殊处理（meta 用 `content`
 属性而不是 text）。
 
-### 5.5 `parser.collect_images(content)`
+### 5.5 `parser_wx.collect_images(content)`
 
 从正文 DOM 抓所有 `<img>` 的真实地址，按出现顺序去重。
 跳过 `data:` 开头（base64 内联图）。
 
-### 5.6 `parser.rewrite_content(content, mapping)`
+### 5.6 `parser_wx.rewrite_content(content, mapping)`
 
 **最克制的清洗**。只做两件事：
 
@@ -262,7 +264,7 @@ CSS selector 取标题/作者，对 `meta` 标签特殊处理（meta 用 `conten
 
 这样导出的 HTML 视觉上接近原文截屏。
 
-### 5.7 `parser.to_markdown(html)`
+### 5.7 `common.to_markdown(html)`
 
 | markdownify 参数 | 选择 | 理由 |
 |------------------|------|------|
@@ -367,7 +369,7 @@ with httpx.Client(http2=False, limits=limits) as client:
 `--debug` 实际就是 `-v` + traceback 收集 + 失败报告。两者可以叠加，
 单 `--debug` 就够了。
 
-### 7.2 关键代码段（`wx2md/cli.py`）
+### 7.2 关键代码段（`web2md/cli.py`）
 
 ```python
 # --debug implies --verbose
@@ -443,10 +445,10 @@ output/_debug/report.txt   每个失败 URL 的完整 traceback
 pyinstaller \
     --onefile \
     --console \
-    --name wx2md \
+    --name web2md \
     --hidden-import lxml._elementpath \
     -p . \
-    wx2md/__main__.py
+    web2md/__main__.py
 ```
 
 关键选项：
@@ -456,8 +458,8 @@ pyinstaller \
 | `--onefile` | 打成单文件而不是文件夹 |
 | `--console` | 终端程序（保留 stdin/stdout） |
 | `--hidden-import lxml._elementpath` | PyInstaller 抓不全 lxml 的内部模块，要手动加 |
-| `-p .` | 让 PyInstaller 能找到 `wx2md` 这个包 |
-| `wx2md/__main__.py` | 入口点 |
+| `-p .` | 让 PyInstaller 能找到 `web2md` 这个包 |
+| `web2md/__main__.py` | 入口点 |
 
 ### 8.3 跨平台陷阱
 
@@ -465,9 +467,9 @@ PyInstaller **不能交叉编译**：
 
 | 在哪里跑 build | 产物 |
 |----------------|------|
-| Windows | `dist/wx2md.exe` |
-| macOS | `dist/wx2md`（mach-o） |
-| Linux | `dist/wx2md`（ELF） |
+| Windows | `dist/web2md.exe` |
+| macOS | `dist/web2md`（mach-o） |
+| Linux | `dist/web2md`（ELF） |
 
 要同时支持多平台，最简单的办法是 GitHub Actions 三平台矩阵 build。
 
@@ -518,11 +520,12 @@ PyInstaller **不能交叉编译**：
 每个模块的**外部依赖不同**：
 
 - `net.py` 只依赖 `httpx`
-- `parser.py` 只依赖 `bs4` 和 `markdownify`
+- `parser_wx.py` 只依赖 `bs4`
+- `common.py` 只依赖 `bs4` 和 `markdownify`
 - `templates.py` 纯 Python，零依赖
 
 未来要换 HTTP 库（比如换成 `requests`）只动 `net.py`；要换 HTML 解析器
-（比如换成 `selectolax`）只动 `parser.py`。这种"换零件不伤主体"的能力
+（比如换成 `selectolax`）只动 `parser_wx.py`。这种"换零件不伤主体"的能力
 是模块化的核心收益。
 
 ### 9.7 为什么 `--debug` 不引入额外配置文件？
@@ -623,7 +626,7 @@ steps:
   - run: ./build.sh        # macOS/Linux
   - run: .\build.ps1       # Windows
   - uses: actions/upload-artifact@v4
-    with: { path: dist/wx2md* }
+    with: { path: dist/web2md* }
 ```
 
 ### 11.7 增量抓某账号全部历史

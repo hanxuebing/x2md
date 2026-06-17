@@ -33,7 +33,7 @@ EXT_BY_MIME = {
     "image/bmp": ".bmp",
 }
 
-log = logging.getLogger("wx2md.net")
+log = logging.getLogger("web2md.net")
 
 
 def pick_ext(url: str, content_type: str | None) -> str:
@@ -75,7 +75,12 @@ def fetch_article(url: str, client: httpx.Client) -> str:
     return r.text
 
 
-def download_image(url: str, dest_dir: Path, client: httpx.Client) -> tuple[str, str | None]:
+def download_image(
+    url: str,
+    dest_dir: Path,
+    client: httpx.Client,
+    referer: str | None = None,
+) -> tuple[str, str | None]:
     """下载单张图片,返回 (url, 本地文件名),失败时文件名为 None。
 
     文件命名策略:sha1(图片字节)前 16 位 + 扩展名。这样做的好处:
@@ -86,10 +91,12 @@ def download_image(url: str, dest_dir: Path, client: httpx.Client) -> tuple[str,
     单张图片失败只记 warning,不抛异常,避免因一张图坏了整篇文章前功尽弃。
     """
     try:
-        # 必须显式带 Referer,否则 mmbiz.qpic.cn 直接返回 403
+        headers: dict[str, str] = {"User-Agent": UA}
+        if referer:
+            headers["Referer"] = referer
         r = client.get(
             url,
-            headers={"User-Agent": UA, "Referer": WX_REFERER},
+            headers=headers,
             follow_redirects=True,
             timeout=30,
         )

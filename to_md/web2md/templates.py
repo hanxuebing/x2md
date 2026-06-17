@@ -83,7 +83,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
   <!-- rich_media_content 这个 class 必须保留:微信内联 CSS 中
        大量选择器以 .rich_media_content xxx 为前缀,缺它样式不生效 -->
-  <div class="page-body rich_media_content">
+  <div class="page-body {body_class}">
 {body}
   </div>
 </div>

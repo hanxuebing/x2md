@@ -1,4 +1,4 @@
-# wx2md
+# web2md
 
 把微信公众号文章（`mp.weixin.qq.com/s/...`）批量转换成本地可离线阅读的 **Markdown + HTML**，并自动下载所有图片到本地（绕过防盗链）。
 
@@ -83,7 +83,7 @@ cd D:\projects\to_md
 uv sync
 
 # 3. 跑一篇试试
-uv run wx2md https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw
+uv run web2md https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw
 ```
 
 第一次 `uv sync` 大概 10–30 秒。完成后会有：
@@ -104,14 +104,14 @@ uv.lock            ← 锁定依赖版本（建议提交到 git）
 不用 activate，uv 自动选 .venv：
 
 ```powershell
-uv run wx2md https://mp.weixin.qq.com/s/xxx
+uv run web2md https://mp.weixin.qq.com/s/xxx
 ```
 
-### 方式 2：`python -m wx2md`（在已激活的虚拟环境里）
+### 方式 2：`python -m web2md`（在已激活的虚拟环境里）
 
 ```powershell
 .venv\Scripts\Activate.ps1
-python -m wx2md https://mp.weixin.qq.com/s/xxx
+python -m web2md https://mp.weixin.qq.com/s/xxx
 ```
 
 ### 方式 3：`uv tool install`（全局命令）
@@ -119,10 +119,10 @@ python -m wx2md https://mp.weixin.qq.com/s/xxx
 ```powershell
 uv tool install .
 # 现在任何目录都能用：
-wx2md https://mp.weixin.qq.com/s/xxx
+web2md https://mp.weixin.qq.com/s/xxx
 
 # 卸载
-uv tool uninstall wx2md
+uv tool uninstall web2md
 ```
 
 ### 方式 4：单文件 `.exe`（分发给不装 Python 的同事）
@@ -147,7 +147,7 @@ https://mp.weixin.qq.com/s/another-article
 ### 2. 跑起来
 
 ```powershell
-uv run wx2md -i urls.txt -o output -w 4 -t 8
+uv run web2md -i urls.txt -o output -w 4 -t 8
 ```
 
 含义：
@@ -175,7 +175,7 @@ uv run wx2md -i urls.txt -o output -w 4 -t 8
 ## 所有命令行参数
 
 ```
-wx2md [-h] [-i INPUT] [-o OUTPUT] [-w WORKERS] [-t IMG_WORKERS]
+web2md [-h] [-i INPUT] [-o OUTPUT] [-w WORKERS] [-t IMG_WORKERS]
       [-v] [--debug] [-V] [urls ...]
 
 位置参数:
@@ -219,7 +219,7 @@ output/
 示例：
 
 ```powershell
-uv run wx2md --debug https://mp.weixin.qq.com/s/INVALID_URL -o test
+uv run web2md --debug https://mp.weixin.qq.com/s/INVALID_URL -o test
 ```
 
 事后看 `test/_debug/report.txt` 就能定位"为什么这篇抓不下来"。
@@ -267,7 +267,7 @@ uv sync --group dev
 # 2. 一键构建
 .\build.ps1
 
-# 产物：dist\wx2md.exe（约 25–40 MB）
+# 产物：dist\web2md.exe（约 25–40 MB）
 ```
 
 ### macOS / Linux
@@ -276,18 +276,18 @@ uv sync --group dev
 uv sync --group dev
 ./build.sh
 
-# 产物：dist/wx2md
+# 产物：dist/web2md
 ```
 
 ### 用产物
 
 ```powershell
 # Windows
-.\dist\wx2md.exe https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw
-.\dist\wx2md.exe --debug -i urls.txt -o output
+.\dist\web2md.exe https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw
+.\dist\web2md.exe --debug -i urls.txt -o output
 
 # macOS/Linux
-./dist/wx2md https://mp.weixin.qq.com/s/xxx
+./dist/web2md https://mp.weixin.qq.com/s/xxx
 ```
 
 > **PyInstaller 不能跨平台**：Windows 上构建出 `.exe`，macOS 上构建出 mach-o
@@ -301,13 +301,15 @@ uv sync --group dev
 
 ```
 to_md/
-├── wx2md/                    包源码
+├── web2md/                    包源码
 │   ├── __init__.py           公开 API：Article、process_article、__version__
-│   ├── __main__.py           支持 python -m wx2md
+│   ├── __main__.py           支持 python -m web2md
 │   ├── cli.py                argparse + 文章级并发 + --debug
 │   ├── core.py               process_article 主流程，Article dataclass
+│   ├── common.py             共用层：Meta、extract_head_styles、to_markdown
+│   ├── parser_wx.py          微信公众号 DOM 解析
+│   ├── parser_bjh.py         百度百家号 DOM 解析
 │   ├── net.py                fetch_article、download_image、UA、Referer
-│   ├── parser.py             parse_meta、collect_images、rewrite_content、to_markdown
 │   └── templates.py          HTML 模板
 ├── docs/
 │   └── TECHNICAL.md          技术细节文档
@@ -396,7 +398,7 @@ chcp 65001
 
 ### 4. `httpx.ConnectTimeout`
 
-网络问题。可在 `wx2md/net.py` 把 `timeout=30` 改大，或加重试。
+网络问题。可在 `web2md/net.py` 把 `timeout=30` 改大，或加重试。
 
 ### 5. uv 找不到 Python
 
@@ -410,13 +412,13 @@ uv sync
 加 `--debug`：
 
 ```powershell
-uv run wx2md --debug -i urls.txt
+uv run web2md --debug -i urls.txt
 ```
 
 ### 7. PyInstaller 打包后跑不起来
 
-- 先用 `uv run wx2md` 确认源码版本能跑
-- 看 `build/wx2md/warn-*.txt` 里的缺失模块警告
+- 先用 `uv run web2md` 确认源码版本能跑
+- 看 `build/web2md/warn-*.txt` 里的缺失模块警告
 - 检查 lxml：PyInstaller 偶尔抓不全 lxml 内部模块，
   build 脚本里已加 `--hidden-import lxml._elementpath`
 
@@ -428,13 +430,13 @@ uv run wx2md --debug -i urls.txt
 |------|--------|----------|
 | 抓 HTML | `httpx` + UA，公众号正文是 SSR，不需要浏览器 | `net.fetch_article` |
 | 提取正文 | 锁定 `div#js_content`（公众号固定容器） | `core.process_article` |
-| 提取标题 | `#activity-name` 或 `meta[property=og:title]` | `parser.parse_meta` |
-| 提取作者 | `#js_name` 或 `meta[name=author]` | `parser.parse_meta` |
-| 收集图片 | 优先 `data-src`（懒加载），回退 `src`；跳过 `data:` base64 | `parser.collect_images` |
+| 提取标题 | `#activity-name` 或 `meta[property=og:title]` | `parser_wx.parse_meta` |
+| 提取作者 | `#js_name` 或 `meta[name=author]` | `parser_wx.parse_meta` |
+| 收集图片 | 优先 `data-src`（懒加载），回退 `src`；跳过 `data:` base64 | `parser_wx.collect_images` |
 | **绕过防盗链** | 下载时 header 必须带 `Referer: https://mp.weixin.qq.com/`，否则 `mmbiz.qpic.cn` 直接 403 | `net.download_image` |
 | 图片命名 | `sha1(bytes)[:16]` + 扩展名，从 `Content-Type` / `wx_fmt=` 参数 / 路径后缀推断 | `net.download_image` / `net.pick_ext` |
-| HTML 改写 | 只做不可避免的：`data-src→src`、删 `<script>/<iframe>`；保留 inline `style`、`<section>` 嵌套 | `parser.rewrite_content` |
-| 转 Markdown | `markdownify`（ATX 标题、`-` 列表项），干掉 `<span>` | `parser.to_markdown` |
+| HTML 改写 | 只做不可避免的：`data-src→src`、删 `<script>/<iframe>`；保留 inline `style`、`<section>` 嵌套 | `parser_wx.rewrite_content` |
+| 转 Markdown | `markdownify`（ATX 标题、`-` 列表项），干掉 `<span>` | `common.to_markdown` |
 | 写出 HTML | 最小化页面骨架 + 公众号自带 inline style | `templates.HTML_TEMPLATE` |
 | 并发 | 外层 `ThreadPoolExecutor(workers)` 跑文章；内层 `ThreadPoolExecutor(img_workers)` 跑图片；共用一个 `httpx.Client` 连接池 | `cli.main` + `core.process_article` |
 | `--debug` | 捕获每次失败的 traceback，最后写出 `_debug/failed.txt` + `_debug/report.txt` | `cli.main` |

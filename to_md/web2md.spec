@@ -7,7 +7,7 @@ hiddenimports += collect_submodules('bs4')
 
 
 a = Analysis(
-    ['wx2md\\__main__.py'],
+    ['web2md\\__main__.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -27,7 +27,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='wx2md',
+    name='web2md',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

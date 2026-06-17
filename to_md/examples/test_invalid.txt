@@ -1,5 +1,5 @@
 # 容错测试:含一个无效 URL,验证单篇失败不影响其他
-# 用法:  .\wx2md.exe --debug -i examples\test_invalid.txt -o output\test_invalid
+# 用法:  .\web2md.exe --debug -i examples\test_invalid.txt -o output\test_invalid
 # 预期:  正常 URL 成功,无效 URL 失败;日志 1 ok / 1 failed / 2 total
 #        output\test_invalid\_debug\ 下生成 failed.txt 和 report.txt
 https://mp.weixin.qq.com/s/oKi8k-GTyL6ggSo4rqY3hw

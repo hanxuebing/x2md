@@ -1,5 +1,7 @@
 """核心编排层:抓取一篇文章 -> 解析 -> 下载图片 -> 输出 MD + HTML + assets/。
 
+支持多来源(微信公众号、百度百家号),根据 URL 域名自动分流到对应解析器。
+
 每篇文章独立产出一个目录:
     <output>/<安全标题>/
         ├── article.md       (含 YAML frontmatter)
@@ -14,25 +16,27 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
+from . import parser_bjh, parser_wx
+from .common import Meta, extract_head_styles, to_markdown
 from .net import download_image, fetch_article
-from .parser import (
-    Meta,
-    collect_images,
-    extract_head_styles,
-    parse_meta,
-    rewrite_content,
-    to_markdown,
-)
 from .templates import HTML_TEMPLATE
+
+# 来源注册表:每个模块暴露统一接口(CONTENT_SELECTOR / REFERER / BODY_CLASS /
+# parse_meta / collect_images / rewrite_content)
+SOURCES = {
+    "wechat": parser_wx,
+    "baijiahao": parser_bjh,
+}
 
 # Windows 文件名非法字符集合(含控制字符 \r \n \t),用于清洗标题
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|\r\n\t]+')
 
-log = logging.getLogger("wx2md.core")
+log = logging.getLogger("web2md.core")
 
 
 @dataclass
@@ -100,27 +104,30 @@ def _render_frontmatter(meta: Meta, url: str) -> str:
 
 
 def _render_meta_line(meta: Meta, url: str) -> str:
-    """构造 HTML 头部那行 meta 信息,各字段用全角间隔点 ` · ` 分隔。
-
-    输出顺序模拟微信 App 中的展示效果:
-        [原创] 公众号 · 作者 · 时间 · 属地 · 原文链接
-    """
+    """构造 HTML 头部那行 meta 信息,各字段用全角间隔点 ` · ` 分隔。"""
     parts: list[str] = []
     if meta.is_original:
-        # "原创" 用独立 span 包装,便于 CSS 加边框样式
         parts.append('<span class="tag-original">原创</span>')
     if meta.account_name:
         parts.append(html_lib.escape(meta.account_name))
-    # 个人作者若与公众号同名则不重复展示
     if meta.author and meta.author != meta.account_name:
         parts.append(html_lib.escape(meta.author))
     if meta.publish_date:
         parts.append(html_lib.escape(meta.publish_date))
     if meta.location:
         parts.append(html_lib.escape(meta.location))
-    # 原文链接用新窗口打开,rel=noopener 避免被反向引用 window.opener
     parts.append(f'<a href="{html_lib.escape(url, quote=True)}" target="_blank" rel="noopener">原文链接</a>')
     return " · ".join(parts)
+
+
+def detect_source(url: str) -> str:
+    """根据 URL 域名判断文章来源。"""
+    host = urlparse(url).hostname or ""
+    if "mp.weixin.qq.com" in host:
+        return "wechat"
+    if "baijiahao.baidu.com" in host or "mbd.baidu.com" in host:
+        return "baijiahao"
+    raise ValueError(f"unsupported article source: {host}")
 
 
 def process_article(
@@ -130,62 +137,57 @@ def process_article(
     client: httpx.Client,
 ) -> Article:
     """处理单篇文章的完整流水线 —— 被 cli.main 的线程池并发调度。"""
-    log.info("fetch %s", url)
-    # 1) 抓取 SSR HTML
+    source = detect_source(url)
+    log.info("fetch [%s] %s", source, url)
+
     html = fetch_article(url, client)
-    # lxml 解析速度比内置 html.parser 快很多,且对微信不规范的标签更宽容
     soup = BeautifulSoup(html, "lxml")
-    # 2) 提取元信息(标题/作者/时间...)与 head 内联样式
-    meta = parse_meta(soup)
     head_styles = extract_head_styles(soup)
 
-    # 微信正文统一放在 #js_content 容器中
-    content = soup.select_one("#js_content")
+    # 根据来源查注册表,取对应解析模块
+    mod = SOURCES[source]
+    meta = mod.parse_meta(soup)
+    content = soup.select_one(mod.CONTENT_SELECTOR)
     if content is None:
-        # 未登录 / 链接失效 / 文章已删除时常见
-        raise RuntimeError("content div #js_content not found — login wall or invalid URL?")
+        raise RuntimeError(
+            f"content container '{mod.CONTENT_SELECTOR}' not found ({source})"
+        )
 
-    # 3) 准备输出目录:<output>/<安全标题>/assets/
     folder = out_root / safe_filename(meta.title)
     img_dir = folder / "assets"
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    # 4) 收集正文里所有真实图片 URL
-    image_urls = collect_images(content)
+    image_urls = mod.collect_images(content)
     log.info("[%s] %d images", meta.title, len(image_urls))
 
-    # 5) 并发下载图片;mapping 记录 原始 URL -> 本地文件名
     mapping: dict[str, str] = {}
     if image_urls:
         with ThreadPoolExecutor(max_workers=img_workers) as pool:
-            futs = [pool.submit(download_image, u, img_dir, client) for u in image_urls]
+            futs = [
+                pool.submit(download_image, u, img_dir, client, mod.REFERER)
+                for u in image_urls
+            ]
             for f in as_completed(futs):
                 u, fname = f.result()
                 if fname:
                     mapping[u] = fname
 
-    # 6) 把 DOM 里的图片地址替换为本地路径,顺便清理 <script> 等不安全标签
-    rewrite_content(content, mapping)
-    # 用 decode() 而不是 decode_contents():保留 #js_content 这个外层标签,
-    # 这样它的 class="rich_media_content" 才会留下,head 中
-    # 形如 .rich_media_content xxx 的样式规则才能命中,离线 HTML 排版才会正常。
+    mod.rewrite_content(content, mapping)
     body_html = content.decode()
-    # 7) HTML 转 Markdown(markdownify 内部会忽略 style/class,只看语义标签)
     md_text = to_markdown(body_html)
 
-    # 8) 写出 article.md(含 frontmatter + 一级标题 + 正文)
     frontmatter = _render_frontmatter(meta, url)
     (folder / "article.md").write_text(
         f"{frontmatter}\n# {meta.title}\n\n{md_text}\n",
         encoding="utf-8",
     )
-    # 9) 写出 article.html(用本地模板包裹,保留微信原样式)
     (folder / "article.html").write_text(
         HTML_TEMPLATE.format(
             title=html_lib.escape(meta.title),
             head_styles=head_styles,
             meta_line=_render_meta_line(meta, url),
             body=body_html,
+            body_class=mod.BODY_CLASS,
         ),
         encoding="utf-8",
     )

@@ -1,4 +1,4 @@
-"""DOM 解析层:提取元信息、收集图片、重写为本地引用、转换 Markdown。
+"""微信公众号文章的 DOM 解析:提取元信息、收集图片、重写为本地引用。
 
 微信文章 SSR 后的 HTML 结构相对稳定,但元信息散落在多个角落
 (可见 DOM、隐藏 meta、内联 script 里的 JS 变量),所以每个字段
@@ -7,34 +7,25 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from datetime import datetime
 
 from bs4 import BeautifulSoup, Tag
-from markdownify import markdownify as md
 
+from .common import Meta, _text
+from .net import WX_REFERER
 
-@dataclass
-class Meta:
-    """文章元信息,所有字段都有合理默认值(空字符串 / False)。"""
+# ── 来源接口常量 ──────────────────────────────────────────────
 
-    title: str                       # 标题,必填
-    account_name: str = ""           # 公众号名称
-    author: str = ""                 # 个人作者(独立于公众号)
-    publish_date: str = ""           # 发布时间 "YYYY-MM-DD HH:MM"
-    location: str = ""               # IP 属地
-    is_original: bool = False        # 是否带"原创"标识
+CONTENT_SELECTOR = "#js_content"
+REFERER = WX_REFERER
+BODY_CLASS = "rich_media_content"
 
+# ── 内部辅助 ──────────────────────────────────────────────────
 
 # 内联 JS 中的 `var ct = "1700000000"` 形式 —— 发布时间的 Unix 秒
 _CT_RE = re.compile(r'var\s+ct\s*=\s*"(\d+)"')
 # 内联 JS 中的 `var publish_time = "2024-01-01 12:00"` 形式
 _PUBLISH_TIME_RE = re.compile(r'var\s+publish_time\s*=\s*"([^"]+)"')
-
-
-def _text(el) -> str:
-    """安全地取 DOM 元素的纯文本;el 为 None 时返回空串。"""
-    return el.get_text(strip=True) if el else ""
 
 
 def _extract_publish_date(soup: BeautifulSoup) -> str:
@@ -109,6 +100,9 @@ def _extract_location(soup: BeautifulSoup) -> str:
     return re.sub(r"^(发表于|IP\s*属地[:：]?)\s*", "", raw).strip()
 
 
+# ── 公开接口 ──────────────────────────────────────────────────
+
+
 def parse_meta(soup: BeautifulSoup) -> Meta:
     """从微信 SSR 后的 DOM 中一次性抽取所有元信息。"""
     # 标题:优先用页面可见标题,兜底 og:title
@@ -142,26 +136,6 @@ def parse_meta(soup: BeautifulSoup) -> Meta:
         location=location,
         is_original=is_original,
     )
-
-
-def extract_head_styles(soup: BeautifulSoup) -> str:
-    """把 <head> 里所有 <style> 内联样式拼成一段字符串,直接塞回输出 HTML。
-
-    刻意不抓 <link rel="stylesheet"> 引用的外链 CSS,因为:
-        - 外链多数指向 wx.qlogo.cn / res.wx.qq.com,只为视觉精细化;
-        - 离线场景下这些请求会失败,反而增加首次加载错误;
-        - 微信文章的关键样式其实绝大多数已经写进了内联 <style>。
-    """
-    head = soup.head
-    if head is None:
-        return ""
-    parts: list[str] = []
-    for style in head.find_all("style"):
-        # decode_contents() 取标签内 raw CSS 文本,保留原始空白与注释
-        css = style.decode_contents()
-        if css.strip():
-            parts.append(f"<style>\n{css}\n</style>")
-    return "\n".join(parts)
 
 
 def collect_images(content: Tag) -> list[str]:
@@ -212,20 +186,3 @@ def rewrite_content(content: Tag, mapping: dict[str, str]) -> None:
             img["src"] = src
         # data-src 已经不需要了,删掉以减小输出体积
         img.attrs.pop("data-src", None)
-
-
-def to_markdown(html: str) -> str:
-    """HTML 转 Markdown,使用 ATX 风格标题(# 前缀)。
-
-    - bullets="-":列表项统一用 -,避免 *、+ 混用;
-    - code_language="":代码块不强行加语言标签,由 markdownify 推断;
-    - strip=["span"]:微信正文里 span 多半只是承载样式,转 MD 时直接拍平,
-      避免把 `<span>foo</span>` 转成多余的空白节点。
-    """
-    return md(
-        html,
-        heading_style="ATX",
-        bullets="-",
-        code_language="",
-        strip=["span"],
-    ).strip()

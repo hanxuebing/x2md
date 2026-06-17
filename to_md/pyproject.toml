@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "wx2md"
+name = "web2md"
 version = "0.1.0"
-description = "Convert WeChat official-account articles to Markdown + HTML with local images."
+description = "Convert WeChat / Baidu Baijiahao articles to Markdown + HTML with local images."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-wx2md = "wx2md.cli:main"
+web2md = "web2md.cli:main"
 
 [dependency-groups]
 dev = [
@@ -24,4 +24,4 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["wx2md"]
+packages = ["web2md"]
