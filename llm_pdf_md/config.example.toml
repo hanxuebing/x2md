@@ -1,0 +1,32 @@
+# 复制成 config.toml 使用：cp config.example.toml config.toml
+#
+# 鉴权走 Bearer 令牌：ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL。
+# 下面留空的字段会回退到对应环境变量。
+
+[api]
+# 共享网关地址与令牌；各模型可在 [models.*] 里单独覆盖。
+base_url   = ""   # 留空回退到环境变量 ANTHROPIC_BASE_URL（再回退到官方地址）
+auth_token = ""   # 留空回退到环境变量 ANTHROPIC_AUTH_TOKEN
+
+# 多模态大模型：看页面图片 → 转录成「原始参考文章」（忠实文字，不做美化）
+[models.vision]
+model      = "claude-opus-4-8"
+max_tokens = 8000
+# 可选：单独指向另一个网关/令牌（留空则用 [api]）
+# base_url   = ""
+# auth_token = ""
+
+# 纯文本大模型：把原始参考文章整理成排版友好、人性化的 Markdown
+[models.text]
+model      = "claude-sonnet-4-6"
+max_tokens = 8000
+thinking   = false   # 复杂表格/公式可设 true（自适应思考，更准但更贵）
+# base_url   = ""
+# auth_token = ""
+
+[render]
+dpi = 150            # 整页渲染分辨率，越高越清晰也越贵
+
+[output]
+lang      = "auto"   # 输出语言：auto / zh / en
+pagebreak = false    # 页间是否插入 --- 分隔线
