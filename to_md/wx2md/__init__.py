@@ -1,4 +1,4 @@
-"""wx2md —— 微信公众号文章转 Markdown + HTML + 本地图片的工具包。
+"""wx2md —— 微信公众号 / 百度百家号文章转 Markdown + HTML + 本地图片的工具包。
 
 本包对外暴露的核心 API:
     - Article:         单篇文章处理结果的数据类

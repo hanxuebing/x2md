@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     """构造 argparse 解析器,所有 CLI 参数集中在此声明。"""
     p = argparse.ArgumentParser(
         prog="wx2md",
-        description="Convert WeChat official-account articles to Markdown + HTML + local images.",
+        description="Convert WeChat / Baidu Baijiahao articles to Markdown + HTML + local images.",
     )
     # 位置参数:可以一次性传多个 URL,nargs="*" 允许 0 个(此时必须配合 -i)
     p.add_argument("urls", nargs="*", help="one or more article URLs")
