@@ -1,34 +1,45 @@
-"""LLM 客户端封装：两阶段管线。
+"""LLM 客户端封装：两阶段管线（claude-agent-sdk）。
 
 Stage 1 (vision): 多模态模型 — 页面图片 → 原始参考文章（忠实转录）
 Stage 2 (text):   文本模型   — 原始文章 → 人性化 Markdown
+
+底层走 claude-agent-sdk（Claude Code CLI 子进程），而非直接 Messages API。
 """
 
 from __future__ import annotations
 
-import base64
+import asyncio
 import re
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-import anthropic
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    TextBlock,
+    query,
+)
 
 from pdf2md.prompts import (
-    VISION_SYSTEM,
     TEXT_SYSTEM,
-    build_vision_user,
+    VISION_SYSTEM,
     build_text_user,
+    build_vision_user,
 )
 
 if TYPE_CHECKING:
     from pdf2md.config import ModelConfig
 
 
-def _make_client(mcfg: "ModelConfig") -> anthropic.Anthropic:
-    """根据 ModelConfig 构建 Anthropic 客户端（Bearer 令牌鉴权）。"""
-    return anthropic.Anthropic(
-        auth_token=mcfg.auth_token,
-        base_url=mcfg.base_url,
-    )
+def _build_env(mcfg: "ModelConfig") -> dict[str, str]:
+    """把 ModelConfig 的鉴权信息映射为环境变量。"""
+    env: dict[str, str] = {}
+    if mcfg.auth_token:
+        env["ANTHROPIC_AUTH_TOKEN"] = mcfg.auth_token
+    if mcfg.base_url:
+        env["ANTHROPIC_BASE_URL"] = mcfg.base_url
+    return env
 
 
 def _strip_fences(text: str) -> str:
@@ -40,35 +51,20 @@ def _strip_fences(text: str) -> str:
     return stripped
 
 
-def _call(
-    client: anthropic.Anthropic,
-    mcfg: "ModelConfig",
-    system: str,
-    user_content: list[dict],
-) -> str:
-    """流式调用 Claude，返回首个 text block 的文本。"""
-    kwargs: dict = {
-        "model": mcfg.model,
-        "max_tokens": mcfg.max_tokens,
-        "system": [
-            {
-                "type": "text",
-                "text": system,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        "messages": [{"role": "user", "content": user_content}],
-    }
-    if mcfg.thinking:
-        kwargs["thinking"] = {"type": "adaptive"}
+async def _run_query(prompt: str, options: ClaudeAgentOptions) -> str:
+    """调用 claude-agent-sdk 的 query()，收集所有 TextBlock 文本。"""
+    parts: list[str] = []
+    async for message in query(prompt=prompt, options=options):
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    parts.append(block.text)
+    return _strip_fences("".join(parts))
 
-    with client.messages.stream(**kwargs) as stream:
-        msg = stream.get_final_message()
 
-    for block in msg.content:
-        if block.type == "text":
-            return _strip_fences(block.text)
-    return ""
+def _sync_run(prompt: str, options: ClaudeAgentOptions) -> str:
+    """同步包装异步 _run_query，供外部同步调用。"""
+    return asyncio.run(_run_query(prompt, options))
 
 
 # ── 公开 API ─────────────────────────────────────────────────────
@@ -82,22 +78,36 @@ def transcribe_page(
     prev_tail: str,
     asset_names: list[str],
 ) -> str:
-    """Stage 1: 多模态模型看页面图片，输出忠实转录文本。"""
+    """Stage 1: 多模态模型看页面图片，输出忠实转录文本。
+
+    把 PNG 写入临时文件，让 agent 通过 Read 工具读取图片后转录。
+    """
     vision_cfg.require_auth("vision")
-    client = _make_client(vision_cfg)
 
-    b64 = base64.standard_b64encode(png_bytes).decode("ascii")
-    user_prompt = build_vision_user(page_no, total_pages, prev_tail, asset_names)
+    with tempfile.TemporaryDirectory(prefix="pdf2md_") as tmpdir:
+        img_name = f"page_{page_no}.png"
+        img_path = Path(tmpdir) / img_name
+        img_path.write_bytes(png_bytes)
 
-    user_content: list[dict] = [
-        {
-            "type": "image",
-            "source": {"type": "base64", "media_type": "image/png", "data": b64},
-        },
-        {"type": "text", "text": user_prompt},
-    ]
+        user_prompt = build_vision_user(page_no, total_pages, prev_tail, asset_names)
+        # 在 prompt 前追加读图指令
+        prompt = (
+            f"请先用 Read 工具读取当前目录下的图片文件 {img_name}，"
+            f"然后根据图片内容完成以下任务。\n\n{user_prompt}"
+        )
 
-    return _call(client, vision_cfg, VISION_SYSTEM, user_content)
+        options = ClaudeAgentOptions(
+            model=vision_cfg.model,
+            system_prompt=VISION_SYSTEM,
+            allowed_tools=["Read"],
+            disallowed_tools=[],
+            max_turns=3,
+            cwd=tmpdir,
+            env=_build_env(vision_cfg),
+            permission_mode="acceptEdits",
+        )
+
+        return _sync_run(prompt, options)
 
 
 def refine_page(
@@ -110,9 +120,17 @@ def refine_page(
 ) -> str:
     """Stage 2: 文本模型把原始转录整理成人性化 Markdown。"""
     text_cfg.require_auth("text")
-    client = _make_client(text_cfg)
 
     user_prompt = build_text_user(raw_text, page_no, total_pages, prev_md_tail, lang)
-    user_content: list[dict] = [{"type": "text", "text": user_prompt}]
 
-    return _call(client, text_cfg, TEXT_SYSTEM, user_content)
+    options = ClaudeAgentOptions(
+        model=text_cfg.model,
+        system_prompt=TEXT_SYSTEM,
+        allowed_tools=[],
+        disallowed_tools=[],
+        max_turns=1,
+        env=_build_env(text_cfg),
+        permission_mode="acceptEdits",
+    )
+
+    return _sync_run(user_prompt, options)
